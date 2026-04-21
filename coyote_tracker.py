@@ -88,4 +88,40 @@ class Coyote_Tracker:
     
     def home_range(self,method='kl',levels=K_LEVELS):
         cords= self.df[['longitude','latitude']].dropna().values
+        if len(cords)<5:
+            print("Not enough data for range estimation.")
+            return None
+        if method == 'm':
+            hull = ConvexHull(cords)
+            hull_p = cords[hull.vertices]
+            polygon = Polygon(hull_p)
+            return {100: polygon}
+        else:
+            import matplotlib.pyplot as plt
+            contr={}
+            lon_g=np.linspace(cords[:,0].min()-0.01, cords[:,0].max()+0.01, K_GRID)
+            lat_g=np.linspace(cords[:,0].min()-0.01, cords[:,0].max()+0.01, K_GRID)
+            x,y=np.meshgrid(lon_g,lat_g)
+            pos=np.vstack([x.ravel(),y.ravel()])
+            ker=gaussian_kde(cords.T,b_method='scott')
+            z=ker(pos).reshape(x.shape)
+            for l in levels:
+                plt.figure()
+                thr=np.percentile(z, 100-l) 
+                css= plt.contour(x,y,z, levels=[thr])   
+                path=css.collections[0].get_paths()
+                plt.close()
+                if not path:
+                    continue
+                ver=path[0].vertices
+                lon_val=lon_g[ver[:,0].astype(int)] 
+                lat_val=lon_g[ver[:,0].astype(int)]     
+                poly=Polygon(zip(lon_val,lat_val)).convex_hull
+                contr[l]=poly
+            return contr
+    def activity(self):
+        df=self.df.dropna(subset=['behavior'])
+        if df.empty:
+            return pd.Series(dtype=float)
+        df['hour']=((df['timestamp'].dt.hour + df['longitude']/15)%24).astype(int)
         
