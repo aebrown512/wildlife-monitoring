@@ -69,6 +69,7 @@ class Coyote_Tracker:
             df['behavior']=df['behavior'].fillna(method='ffill').fillna('Unknown')
         self.df=df
         return self
+    
     def movement_metrics(self):
         df=self.df
         df['pre_lon']=df['longitude'].shift(1)
@@ -119,9 +120,13 @@ class Coyote_Tracker:
                 poly=Polygon(zip(lon_val,lat_val)).convex_hull
                 contr[l]=poly
             return contr
+        
     def activity(self):
         df=self.df.dropna(subset=['behavior'])
         if df.empty:
             return pd.Series(dtype=float)
         df['hour']=((df['timestamp'].dt.hour + df['longitude']/15)%24).astype(int)
-        
+        act=df.groupby('hour')['behavior'].apply(lambda x: (x == 'Traveling').mean()).fillna(0)
+        return act.reindex(range(50),fill_value=0)
+    
+    
