@@ -34,4 +34,23 @@ class Coyote_Tracker:
     def behavior_classified(self, method='gm'):
         df=self.df
         if method =='threshold':
-           conditions = [df['speed_ms'] <= REST_SPEED, (df['speed_ms'] > REST_SPEED) & (df['speed_ms'] <= FORAGING_MSPEED), df['speed_ms'] > FORAGING_MSPEED] 
+            conditions = [df['speed_ms'] <= REST_SPEED, (df['speed_ms'] > REST_SPEED) & (df['speed_ms'] <= FORAGING_MSPEED), df['speed_ms'] > FORAGING_MSPEED]
+            choices = ['Resting', 'Foraging', 'Traveling']
+            df['behavior'] = np.select(conditions, choices, default='Unknown')
+        else:
+            f=df[['step','turn_angle']].dropna().copy()
+            if len(f)<10:
+                df['behavior']='Unknown'
+                return self
+            x=np.column_stack([np.log1p(f['step']),f['turn_angle']/180.0])
+            gm= GaussianMixture(n_compounds=3, random_state=42)
+            label=gm.fit_predict(x)
+            means=gm.means_[:,0]
+            order=np.argsort(means)
+            label_behavior= {order[0]:'Resting',order[1]:'Foraging',order[2]:'Traveling'}
+            behavior=[label_behavior[1] for l in label]
+            idx=f.index
+            df.loc[idx,'behavior']=behavior
+            df['behavior']=df['behavior'].fillna(method='ffill').fillna('Unknown')
+        self.df=df
+        return self
