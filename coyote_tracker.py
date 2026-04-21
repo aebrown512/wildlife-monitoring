@@ -28,3 +28,10 @@ class Coyote_Tracker:
         df['dt_sec']=df['timestamp'].diff().dt.total_seconds()
         df=df.drop(columns=['dt_sec'],errors='ignore')
         df=df[(df['dt_sec'] >= MINTIME_DELTA) | (df['dt_sec'].isna())]
+        self.df=df
+        return self
+    
+    def behavior_classified(self, method='gm'):
+        df=self.df
+        if method =='threshold':
+           conditions = [df['speed_ms'] <= REST_SPEED, (df['speed_ms'] > REST_SPEED) & (df['speed_ms'] <= FORAGING_MSPEED), df['speed_ms'] > FORAGING_MSPEED] 
