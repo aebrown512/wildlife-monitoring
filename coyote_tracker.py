@@ -9,6 +9,21 @@ from shapely.geometry import Point as ShapelyPoint, Polygon
 import warnings
 from config import *
 
+def meters(lon1,lat1,lon2,lat2):
+    return geodesic((lat1,lon1),(lat2,lon2)).meters
+
+def bearing(lon1,lat1,lon2,lat2):
+    from math import atan2, cos, sin, radians, degrees
+    lat1,lon1,lat2,lon2=map(radians, [lat1,lon1,lat2,lon2])
+    lon3=lon2-lon1
+    m=sin(lon3)*cos(lat2)
+    n=cos(lat1)*sin(lat2)-sin(lat1)*cos(lat2)*cos(lon3)
+    return degrees(atan2(m,n))%360
+
+def turning_a(b,c):
+    dif=abs(b-c)%360
+    return dif if dif <= 180 else 360 - dif
+
 class Coyote_Tracker:
     def __init__(self,gps_csv_path, urban_pgon= None, road_nwork= None):
         self.raw_df = pd.read_csv(gps_csv_path)
@@ -54,3 +69,23 @@ class Coyote_Tracker:
             df['behavior']=df['behavior'].fillna(method='ffill').fillna('Unknown')
         self.df=df
         return self
+    def movement_metrics(self):
+        df=self.df
+        df['pre_lon']=df['longitude'].shift(1)
+        df['pre_lat']=df['latitude'].shift(1)
+        df['pre_time']=df['timestamp'].shift(1)
+        df['step']=df.apply(lambda r: meters(r['pre_lon'],r['pre_lat'],r['longitude'],r['latitude']) 
+                            if pd.notna(r['pre_lon']) else np.nan, axis=1)
+        df['delta']=(df['timestamp']-df['pre_time']).dt.total_seconds()
+        df['speed_ms']=df['step']/df['delta']
+        df['bearing']=df.apply(lambda r: bearing(r['pre_lon'],r['pre_lat'],r['longitude'],r['latitude'])
+                               if pd.notna(r['pre_lon']) else np.nan, axis=1)
+        df['turn_angle']=df['bearing'].diff().abs.apply(lambda x:x if x<=180 else 360-x)
+        df.loc[df['speed_ms']> MAX_CSPEED, 'speed_ms'] = np.nan
+        df.loc[df['step']> 10000, 'step']=np.nan
+        self.df=df
+        return self
+    
+    def home_range(self,method='kl',levels=K_LEVELS):
+        cords= self.df[['longitude','latitude']].dropna().values
+        
