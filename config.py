@@ -1,0 +1,2 @@
+MAX_CSPEED = 20.0
+M_HDOP = 5.0
