@@ -9,3 +9,6 @@ K_GRID= 250.0
 STATIONARY_RAD=100
 STATIONARY_H= 12
 URBAN_BAR=100
+OUTPUT_MAP='coyote_map.html'
+OUTPUT_CSV='coyote_behavior.csv'
+OUTPUT_COLLECT='collect.csv'

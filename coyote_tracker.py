@@ -172,4 +172,31 @@ class Coyote_Tracker:
         collect=df.groupby('date').agg(total_d=('step', lambda x: x.sum()/1000),avg_speed=('speed_ms','mean'),ctravel=('behavior', lambda x: (x=='Traveling').mean()),crest=('behavior', lambda x: (x=='Resting').mean()),cforage=('behavior', lambda x: (x=='Foraging').mean()),n_fixes=('behavior','count'))
         return collect
     
-        
+    def imap(self, outputmap=OUTPUT_MAP):
+        df=self.df.dropna(subset=['behavior'])
+        if df.empty:
+            print("No data for map.")
+            return
+        import matplotlib.pyplot as plt
+        import folium
+        cen_lat=df['latitude'].mean()
+        cen_lon=df['longitude'].mean()
+        m=folium.Map(location=[cen_lat,cen_lon], zoom_start=12)
+        color={'Resting':'blue','Foraging':'green','Traveling':'red','Unknown':'gray'}
+        for _, row in df.iterrows():
+            folium.CircleMarker(location=[row['latitude'], row['longitude']], radius=3, color=color.get(row['behavior'],'gray'), fill=True).add_to(m)
+        points=[(row['latitude'], row['longitude']) for _, row in df.iterrows()]
+        folium.PolyLine(points, color='black', weight=1).add_to(m)
+        m.save(outputmap)
+        print(f"Map saved to {outputmap}")
+
+    def pipeline(self):
+        self.preproc()
+        self.movement_metrics()
+        self.behavior_classified()
+        home_range=self.home_range()
+        activity=self.activity()
+        alerts=self.detect_weird()
+        collective=self.collective()
+        self.imap()
+        return {'home_range': home_range, 'activity': activity, 'alerts': alerts, 'collective': collective}
