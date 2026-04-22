@@ -60,5 +60,5 @@ def upload():
         tracker=Coyote_Tracker(gps_path,urban_p,road_n)
         result=tracker.pipeline()
 
-        
+    
     
