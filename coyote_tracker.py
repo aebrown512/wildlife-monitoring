@@ -200,3 +200,4 @@ class Coyote_Tracker:
         collective=self.collective()
         self.imap()
         return {'home_range': home_range, 'activity': activity, 'alerts': alerts, 'collective': collective}
+    
