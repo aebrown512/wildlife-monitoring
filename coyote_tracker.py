@@ -152,3 +152,18 @@ class Coyote_Tracker:
                 dist_m = dist_d * 111320.0
                 if dist_m < URBAN_BAR:
                     alerts.append({'type': 'Urban incursion (night)','timestamp': row['timestamp'],'latitude': row['latitude'],'longitude': row['longitude'],'info': f'distance {dist_m:.0f}m'})
+        if self.roads is not None and len(df) > 1:
+            for r in range(1, len(df)):
+                pa = ShapelyPoint(df.iloc[r-1]['longitude'], df.iloc[r-1]['latitude'])
+                pb = ShapelyPoint(df.iloc[r]['longitude'], df.iloc[r]['latitude'])
+                s = pa.union(pb)  # LineString
+                for road in self.roads:
+                    if s.distance(road) < 1e-8:  # intersects
+                        alerts.append({'type': 'Road crossing','timestamp': df.iloc[r]['timestamp'],'latitude': df.iloc[r]['latitude'],'longitude': df.iloc[r]['longitude'],'info': ''})
+                        break
+        if alerts:
+            return pd.DataFrame(alerts)
+        else:
+            return pd.DataFrame(columns=['type', 'timestamp', 'latitude', 'longitude', 'info'])
+        
+        
