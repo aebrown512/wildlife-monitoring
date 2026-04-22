@@ -218,6 +218,32 @@ class Coyote_Tracker:
         crad=speed_d*delta_s
         return {'timestamp': n+pd.Timedelta(minutes=aheadmin), 'latitude': dest.latitude, 'longitude': dest.longitude, 'uncertainty_m': crad}
 
+    def predict_k(self,aheadmin=60,prevmin=60):
+        from filterpy.kalman import KalmanFilter
+        import numpy as np
+        if self.df is None or len(self.df)<2:
+            print("Not enough data.")
+            return None
+        n=self.df['timestamp'].max()
+        rw=self.df.tail(min(30,len(self.df))).copy()
+        rw=rw.sort_values('timestamp')
+        mean_lat=rw['latitude'].mean()
+        m_per_deg_lon=111320.0*np.cos(np.radians(mean_lat))
+        r_lon=rw.iloc[0]['longitude']
+        r_lat=rw.iloc[0]['latitude']
+        rw['x_m']=(rw['longitude']-r_lon)*m_per_deg_lon 
+        rw['y_m']=(rw['latitude']-r_lat)*111320.0
+        dt=rw['timestamp'].diff().dt.total_seconds().iloc[-1]
+
+        kf=KalmanFilter(dim_x=4, dim_z=2)
+        kf.F=np.array([[1,0,dt,0],[0,1,0,dt],[0,0,1,0],[0,0,0,1]])  
+        kf.H=np.array([[1,0,0,0],[0,1,0,0]])
+        kf.R=np.eye(2)*10.0 
+        kf.P *= 1000.0
+        kf.Q=np.eye(4)*0.1
+        
+         
+
 
 
     def pipeline(self):
