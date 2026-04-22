@@ -241,8 +241,19 @@ class Coyote_Tracker:
         kf.R=np.eye(2)*10.0 
         kf.P *= 1000.0
         kf.Q=np.eye(4)*0.1
-        
-         
+
+        for _, row in rw.iterrows():
+            z=np.array([row['x_m'], row['y_m']])
+            kf.predict()
+            kf.update(z)
+        s=int(aheadmin*60/dt)
+        for _ in range(s):
+            kf.predict()
+        pred_x, pred_y = kf.x[0,0], kf.x[1,0]
+        pred_lon=pred_x/m_per_deg_lon + r_lon
+        pred_lat=pred_y/111320.0 + r_lat
+        crad=np.sqrt(kf.P[0,0] + kf.P[1,1])
+        return {'timestamp': n+pd.Timedelta(minutes=aheadmin), 'latitude': pred_lat, 'longitude': pred_lon, 'uncertainty_m': crad}
 
 
 
