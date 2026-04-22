@@ -1,0 +1,35 @@
+import argparse
+import sys
+from coyote_tracker import Coyote_Tracker
+from shapely.geometry import Point, Polygon, LineString
+
+def main():
+    par=argparse.ArgumentParser(description='Coyote GPS Data Analysis')
+    par.add_argument('--input', required=True, help='CSV file with latitude, longitude, and timestamp')
+    par.add_argument('--urban', help='Polygon for urban area')
+    par.add_argument('--roads', help='LineString for roads')
+    args=par.parse_args()
+
+    urban_pgon=None
+    if args.urban:
+        try:
+            from shapely import wkt
+            with open(args.urban) as o:
+                urban_pgon=wkt.loads(o.read())
+        except:
+            print("Could not load urban area polygon")
+    road_l=None
+    if args.roads:
+        try:
+            import json
+            from shapely.geometry import shape
+            with open(args.roads) as o:
+                data=json.load(o)
+            road_l=[]
+            for feature in data['features']:
+                if feature['geometry']['type']=='LineString':
+                    road_l.append(shape(feature['geometry']))
+            print(f"Loaded {len(road_l)} roads.")
+        except:
+            print("Could not load roads.")
+    

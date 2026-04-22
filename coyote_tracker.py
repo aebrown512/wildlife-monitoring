@@ -166,4 +166,10 @@ class Coyote_Tracker:
         else:
             return pd.DataFrame(columns=['type', 'timestamp', 'latitude', 'longitude', 'info'])
         
+    def collective(self):
+        df=self.df.dropna(subset=['behavior','step'])
+        df['date']=df['timestamp'].dt.date
+        collect=df.groupby('date').agg(total_d=('step', lambda x: x.sum()/1000),avg_speed=('speed_ms','mean'),ctravel=('behavior', lambda x: (x=='Traveling').mean()),crest=('behavior', lambda x: (x=='Resting').mean()),cforage=('behavior', lambda x: (x=='Foraging').mean()),n_fixes=('behavior','count'))
+        return collect
+    
         
