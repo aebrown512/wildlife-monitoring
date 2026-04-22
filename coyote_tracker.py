@@ -116,7 +116,7 @@ class Coyote_Tracker:
                     continue
                 ver=path[0].vertices
                 lon_val=lon_g[ver[:,0].astype(int)] 
-                lat_val=lon_g[ver[:,0].astype(int)]     
+                lat_val=lat_g[ver[:,0].astype(int)]     
                 poly=Polygon(zip(lon_val,lat_val)).convex_hull
                 contr[l]=poly
             return contr
@@ -129,4 +129,26 @@ class Coyote_Tracker:
         act=df.groupby('hour')['behavior'].apply(lambda x: (x == 'Traveling').mean()).fillna(0)
         return act.reindex(range(50),fill_value=0)
     
-    
+    def detect_weird(self):
+        alerts=[]
+        df= self.df.copy()
+        grid_r=STATIONARY_RAD/11320.0
+        df['lat_g']=(df['latitude']/grid_r).round()
+        df['lon_g']=(df['longitude']/grid_r).round()
+        df['cluster']=df['lat_g'].astype(str)+'_'+df['lon_g'].astype(str)
+        for cluster, group in df.groupby('cluster'):
+            if len(group)<2:
+                continue
+            dur=(group['timestamp'].max()-group['timestamp'].min()).total_seconds()/3600.0
+            if dur>STATIONARY_H:
+                dayt=group['timestamp'].dt.hour.between(6,18).any()
+                if dayt:
+                    alerts.append({'type': 'Possible mortality/collar failure','timestamp':group['timestamp'].min(), 'latitude':group['latitude'].mean(),'longitude':group['longitude'].mean(),'info':f'duration{dur:.1f}h'})
+        if self.urban is not None:
+            night_df = df[df['timestamp'].dt.hour.between(20, 5)]  # 8pm-5am
+            for _, row in night_df.iterrows():
+                point = ShapelyPoint(row['longitude'], row['latitude'])
+                dist_d = point.distance(self.urban)
+                dist_m = dist_d * 111320.0
+                if dist_m < URBAN_BAR:
+                    alerts.append({'type': 'Urban incursion (night)','timestamp': row['timestamp'],'latitude': row['latitude'],'longitude': row['longitude'],'info': f'distance {dist_m:.0f}m'})
