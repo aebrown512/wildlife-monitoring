@@ -255,7 +255,22 @@ class Coyote_Tracker:
         crad=np.sqrt(kf.P[0,0] + kf.P[1,1])
         return {'timestamp': n+pd.Timedelta(minutes=aheadmin), 'latitude': pred_lat, 'longitude': pred_lon, 'uncertainty_m': crad}
 
-
+    def predict_range(self,aheadmin=60,prevmin=60,method='lin'):
+        pre=self.predict_linear(aheadmin, prevmin) if method=='lin' else self.predict_k(aheadmin, prevmin)
+        h=self.home_range(method='kl', levels=[95])
+        if h is None or 95 not in h:
+            return pre
+        home_p=h[95]
+        p=ShapelyPoint(pre['longitude'], pre['latitude'])
+        if not home_p.contains(p):
+            bou=home_p.exterior
+            near_pt=bou.interpolate(bou.project(p))
+            pre['latitude']=near_pt.y
+            pre['longitude']=near_pt.x
+            pre['constrained']=True
+        else:
+            pre['constrained']=False
+        return pre
 
     def pipeline(self):
         self.preproc()
