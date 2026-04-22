@@ -60,5 +60,43 @@ def upload():
         tracker=Coyote_Tracker(gps_path,urban_p,road_n)
         result=tracker.pipeline()
 
+        moutput=ses_dir/'map.html'
+        tracker.imap(str(moutput))
+        collect=result['collect'].reset_index().to_dict(orient='records')
+        alert=result['alert'].to_dict(orient='records') if not result['alert'].empty else []
+
+        try:
+            pre=tracker.predict_linear(aheadmin=60)
+            predict={
+                'timestamp': str(pre['timestamp']),
+                'latitude': pre['latitude'],
+                'longitude': pre['longitude'],
+                'cradius_m': pre['cradius_m']
+            }
+        except Exception:
+            predict=None
+
+        process_csv=ses_dir/'process.csv'
+        result['process'].to_csv(process_csv, index=False)
+        return jsonify({
+            'success': True,
+            'session_id': ses_id,
+            'map_url': url_for('get_file', session_id=ses_id, filename='map.html'),
+            'processed_csv_url': url_for('get_file', session_id=ses_id, filename='tracked_coyote.csv'),
+            'collect': collect,
+            'alerts': alert,
+            'prediction': predict,
+            'stats': {
+                'num_fixes': len(result['trajectory']),
+                'total_distance_km': result['daily_summary']['total_distance_km'].sum() if not result['collect'].empty else 0,
+                'home_range_area_km2': None
+            }
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
     
     
+
+   
