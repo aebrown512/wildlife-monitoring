@@ -41,5 +41,24 @@ def upload():
     if road_f and allow(road_f.filename, {'wkt','geojson'}):
         road_p=ses_dir / secure_filename(road_f.filename)
         road_f.save(road_p)
-    
+
+    try:
+        urban_p=None
+        if urban_p:
+            with open(urban_p,'r') as f:
+                urban_p=wkt.loads(f.read())
+        road_n=None
+        from shapely.geometry import shape
+        if road_p:
+            with open(road_p,'r') as f:
+                d=json.load(f)
+            road_n=[]
+            for f in d.get('features',[]):
+                if f['geometry']['type']=='LineString':
+                    road_n.append(shape(f['geometry']))
+        
+        tracker=Coyote_Tracker(gps_path,urban_p,road_n)
+        result=tracker.pipeline()
+
+        
     
