@@ -2,6 +2,7 @@ import argparse
 import sys
 from coyote_tracker import Coyote_Tracker
 from shapely.geometry import Point, Polygon, LineString
+import config
 
 def main():
     par=argparse.ArgumentParser(description='Coyote GPS Data Analysis')
@@ -32,4 +33,12 @@ def main():
             print(f"Loaded {len(road_l)} roads.")
         except:
             print("Could not load roads.")
-    
+    track=Coyote_Tracker(args.input, urban_pgon, road_l)
+    result=track.pipeline()
+    print('Complete.')
+    print(f"Output files: {config.OUTPUT_CSV}, {config.OUTPUT_DAILY_SUMMARY}, {config.OUTPUT_ALERTS}, {config.OUTPUT_MAP}")
+    if result['home_range']:
+        print(f"Home range contours: {list(result['home_range'].keys())}")
+
+if __name__ == "__main__":
+    main()
