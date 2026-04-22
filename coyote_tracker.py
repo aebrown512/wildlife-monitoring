@@ -190,6 +190,36 @@ class Coyote_Tracker:
         m.save(outputmap)
         print(f"Map saved to {outputmap}")
 
+    def predict_linear(self,aheadmin=60,prevmin=60):
+        from geopy.distance import distance
+        if self.df is None or len(self.df)<2:
+            print("Not enough data.")
+            return None
+        n=self.df['timestamp'].max()
+        off=n-pd.Timedelta(minutes=aheadmin)
+        rw=self.df[self.df['timestamp']>=off].copy()
+        if len(rw)<2:
+            rw=self.df.tail(2).copy()
+        rw['pre_lon']=rw['longitude'].shift(1)
+        rw['pre_lat']=rw['latitude'].shift(1)
+        rw['delta']=rw['timestamp'].diff().dt.total_seconds()
+        rw['step']=rw.apply(lambda r: meters(r['pre_lon'],r['pre_lat'],r['longitude'],r['latitude']) if pd.notna(r['pre_lon']) else np.nan, axis=1)
+        rw['speed_ms']=rw['step']/rw['delta']
+        avg_s=rw['speed_ms'].mean()
+        rw['bear_rad']=np.radians(rw['bearing'])
+        mean_bear_rad=np.arctan2(np.sin(rw['bear_rad']).mean(), np.cos(rw['bear_rad']).mean())
+        mean_bear_deg=np.degrees(mean_bear_rad)%360
+        delta_s=aheadmin*60
+        dist=avg_s*delta_s
+        last_lat=rw.iloc[-1]['latitude']
+        last_lon=rw.iloc[-1]['longitude']
+        dest=distance(meters=dist).destination((last_lat, last_lon), mean_bear_deg)
+        speed_d=rw['speed_ms'].std
+        crad=speed_d*delta_s
+        return {'timestamp': n+pd.Timedelta(minutes=aheadmin), 'latitude': dest.latitude, 'longitude': dest.longitude, 'uncertainty_m': crad}
+
+
+
     def pipeline(self):
         self.preproc()
         self.movement_metrics()
