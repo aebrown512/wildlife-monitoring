@@ -131,6 +131,10 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     resultsDiv.style.display = 'none';
     
     try {
+        const formData = new FormData(e.target);
+        for (let pair of formData.entries()) {
+        console.log(pair[0], pair[1]);  
+        }
         const response = await fetch('/upload', {
             method: 'POST',
             body: formData
