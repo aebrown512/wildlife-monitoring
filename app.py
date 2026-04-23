@@ -12,6 +12,8 @@ from shapely.geometry import mapping
 from coyote_tracker import Coyote_Tracker
 from config import *
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = Path('uploads')
+app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
 def allow(filename,extensions={'csv','wkt','geojson'}):
     return '.' in filename and filename.rsplit('.',1)[1].lower() in extensions
 
