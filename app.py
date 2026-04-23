@@ -97,6 +97,40 @@ def upload():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
     
-    
+@app.route('/get_file/<ses_id>/<filename>')    
+def get_file(ses_id, filename):
+    file_path = app.config['UPLOAD_FOLDER'] / ses_id / filename
+    if not file_path.exists():
+        return jsonify({'error': 'File not found'}), 404
+    return send_file(file_path)
 
-   
+@app.route('/predict', methods=['POST'])
+def predict():
+    d=request.get_json()
+    ses_id=d.get('session_id')
+    aheadmin=int(d.get('aheadmin',60))
+    method=d.get('method','linear')
+    ses_dir=app.config['UPLOAD_FOLDER'] / ses_id
+    gps_p=ses_dir/'tracked_coyote.csv'
+    if not gps_p.exists():
+        return jsonify({'error': 'Session not found'}), 404
+    try:
+        track = Coyote_Tracker(str(gps_p))
+        track.preprocess()
+        track.compute_movement_metrics()
+        track.classify_behavior(method='gm')
+        if method == 'linear':
+            pred = track.predict_linear(aheadmin=aheadmin)
+        else:
+            pred = track.predict_k(aheadmin=aheadmin)
+        return jsonify({
+            'timestamp': str(pred['timestamp']),
+            'latitude': pred['latitude'],
+            'longitude': pred['longitude'],
+            'cradius_m': pred['confidence_radius_m']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
