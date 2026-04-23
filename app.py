@@ -29,8 +29,8 @@ def upload():
     gps_f = request.files.get('gps_f')
     if not gps_f or not allow(gps_f.filename, {'csv'}):
         return jsonify({'error': 'No file uploaded or invalid file type'}), 400
-    gps_path = ses_dir / secure_filename(gps_f.filename)
-    gps_f.save(gps_path)
+    gps_file = ses_dir / secure_filename(gps_f.filename)
+    gps_f.save(gps_file)
 
     urban_p=None
     urban_f=request.files.get('urban_f')

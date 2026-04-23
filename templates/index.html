@@ -140,11 +140,9 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             alert('Error: ' + data.error);
             return;
         }
-        // Populate results
         if (data.map_url) {
             document.getElementById('map-container').innerHTML = `<iframe src="${data.map_url}"></iframe>`;
         }
-        // Prediction
         if (data.prediction) {
             document.getElementById('predictionBox').innerHTML = `
                 <p><i class="fas fa-map-marker-alt"></i> <strong>Predicted at ${data.prediction.timestamp}</strong><br>
@@ -155,7 +153,6 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
         } else {
             document.getElementById('predictionBox').innerHTML = '<p class="text-warning">Prediction not available (insufficient data).</p>';
         }
-        // Daily summary table
         const tbody = document.querySelector('#summaryTable tbody');
         tbody.innerHTML = '';
         if (data.daily_summary && data.daily_summary.length) {
