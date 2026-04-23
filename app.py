@@ -59,7 +59,7 @@ def upload():
                 if f['geometry']['type']=='LineString':
                     road_n.append(shape(f['geometry']))
         
-        tracker=Coyote_Tracker(gps_path,urban_p,road_n)
+        tracker=Coyote_Tracker(str(gps_file),urban_p,road_n)
         result=tracker.pipeline()
 
         moutput=ses_dir/'map.html'
