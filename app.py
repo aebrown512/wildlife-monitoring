@@ -134,12 +134,14 @@ def predict():
         if method == 'linear':
             pred = track.predict_linear(aheadmin=aheadmin)
         else:
-            pred = track.predict_k(aheadmin=aheadmin)
+            pred = track.predict_ai(aheadmin=aheadmin)
+
+        uncertainty = pred.get('uncertainty_m', pred.get('cradius_m')) if pred else None
         return jsonify({
             'timestamp': str(pred['timestamp']),
             'latitude': pred['latitude'],
             'longitude': pred['longitude'],
-            'cradius_m': pred['confidence_radius_m']
+            'uncertainty_m': uncertainty
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500

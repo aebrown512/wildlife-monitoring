@@ -275,6 +275,53 @@ class Coyote_Tracker:
         else:
             pre['constrained']=False
         return pre
+    
+    def predict_ai(self, aheadmin=60):
+        from groq import Groq
+        import json
+        import os
+
+        if self.df is None or len(self.df) < 2:
+            return None
+
+        recent = self.df.tail(10).copy()
+        rows = []
+        for _, row in recent.iterrows():
+            rows.append({
+                'timestamp': str(row['timestamp']),
+                'latitude': row['latitude'],
+                'longitude': row['longitude'],
+                'speed_ms': round(float(row['speed_ms']), 3) if pd.notna(row.get('speed_ms')) else None,
+                'bearing': round(float(row['bearing']), 1) if pd.notna(row.get('bearing')) else None,
+                'behavior': row.get('behavior', 'Unknown')
+            })
+
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """You are an expert wildlife biologist specializing in coyote movement ecology.
+    Given GPS tracking data, predict the animal's next location.
+    Respond ONLY with a JSON object, no markdown, no explanation:
+    {"latitude": <float>, "longitude": <float>, "confidence_radius_m": <float>, "reasoning": "<one sentence>"}"""
+                },
+                {
+                    "role": "user",
+                    "content": f"Predict this coyote's location in {aheadmin} minutes:\n{json.dumps(rows, indent=2)}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=256
+        )
+        text = response.choices[0].message.content.strip()
+        text = text.replace('```json', '').replace('```', '').strip()
+        result = json.loads(text)
+        result['method'] = 'ai'
+        result['timestamp'] = str(self.df['timestamp'].max() + pd.Timedelta(minutes=aheadmin))
+        return result
 
     def pipeline(self):
         self.preproc()
@@ -285,6 +332,12 @@ class Coyote_Tracker:
         alerts=self.detect_weird()
         collective=self.collective()
         self.imap()
-        return {'home_range': home_range, 'activity': activity, 'alerts': alerts, 'collective': collective, 'process': self.df}
+        ai_prediction = None
+        try:
+            ai_prediction = self.predict_ai(aheadmin=60)
+        except Exception as e:
+            print(f"AI prediction failed: {e}")
+        return {'home_range': home_range, 'activity': activity, 'alerts': alerts, 'collective': collective, 'process': self.df, 'ai_prediction': ai_prediction
+}
     
     
