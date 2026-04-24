@@ -11,11 +11,14 @@ from shapely import wkt
 from shapely.geometry import mapping
 from coyote_tracker import Coyote_Tracker
 from config import *
+from flask import send_from_directory
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = Path('uploads')
 app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
-def allow(filename,extensions={'csv','wkt','geojson'}):
-    return '.' in filename and filename.rsplit('.',1)[1].lower() in extensions
+def allow(filename, extensions=None):
+    if extensions is None:
+        extensions = {'csv', 'wkt', 'geojson'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in extensions
 
 @app.route('/')
 def index():
@@ -27,10 +30,18 @@ def upload():
     ses_dir=app.config['UPLOAD_FOLDER'] / ses_id
     ses_dir.mkdir(exist_ok=True)
     gps_f = request.files.get('gps_f')
-    if not gps_f or not allow(gps_f.filename, {'csv'}):
+    if not gps_f or not allow(gps_f.filename, {'csv', 'wkt', 'geojson'}):
         return jsonify({'error': 'No file uploaded or invalid file type'}), 400
-    gps_file = ses_dir / secure_filename(gps_f.filename)
-    gps_f.save(gps_file)
+    gps_path = ses_dir / secure_filename(gps_f.filename)
+    gps_f.save(gps_path) 
+    try:
+        import pandas as pd
+        df = pd.read_csv(gps_path)
+        print("Columns:", df.columns.tolist())
+        print("Head:", df.head(2))
+    except Exception as debug_e:
+        print("CSV read error:", debug_e)
+        return jsonify({'error': f'CSV read failed: {debug_e}'}), 400   
 
     urban_p=None
     urban_f=request.files.get('urban_f')
@@ -45,7 +56,6 @@ def upload():
         road_f.save(road_p)
 
     try:
-        urban_p=None
         if urban_p:
             with open(urban_p,'r') as f:
                 urban_p=wkt.loads(f.read())
@@ -55,17 +65,17 @@ def upload():
             with open(road_p,'r') as f:
                 d=json.load(f)
             road_n=[]
-            for f in d.get('features',[]):
-                if f['geometry']['type']=='LineString':
-                    road_n.append(shape(f['geometry']))
+            for feature in d.get('features', []):
+                if feature['geometry']['type'] == 'LineString':
+                    road_n.append(shape(feature['geometry']))
         
-        tracker=Coyote_Tracker(str(gps_file),urban_p,road_n)
+        tracker=Coyote_Tracker(str(gps_path),urban_p,road_n)
         result=tracker.pipeline()
 
         moutput=ses_dir/'map.html'
         tracker.imap(str(moutput))
-        collect=result['collect'].reset_index().to_dict(orient='records')
-        alert=result['alert'].to_dict(orient='records') if not result['alert'].empty else []
+        collective = result['collective'].reset_index().fillna(0).to_dict(orient='records')
+        alert = result['alerts'].fillna('').to_dict(orient='records') if not result['alerts'].empty else []
 
         try:
             pre=tracker.predict_linear(aheadmin=60)
@@ -83,14 +93,14 @@ def upload():
         return jsonify({
             'success': True,
             'session_id': ses_id,
-            'map_url': url_for('get_file', session_id=ses_id, filename='map.html'),
-            'processed_csv_url': url_for('get_file', session_id=ses_id, filename='tracked_coyote.csv'),
-            'collect': collect,
+            'map_url': url_for('get_file', ses_id=ses_id, filename='map.html'),
+            'processed_csv_url': url_for('get_file', ses_id=ses_id, filename='process.csv'),
+            'collective': collective,
             'alerts': alert,
             'prediction': predict,
             'stats': {
-                'num_fixes': len(result['trajectory']),
-                'total_distance_km': result['daily_summary']['total_distance_km'].sum() if not result['collect'].empty else 0,
+                'num_fixes': len(result['process']),
+                'total_distance_km': result['collective']['total_d'].sum() if not result['collective'].empty else 0,
                 'home_range_area_km2': None
             }
         })
@@ -104,7 +114,7 @@ def get_file(ses_id, filename):
     file_path = app.config['UPLOAD_FOLDER'] / ses_id / filename
     if not file_path.exists():
         return jsonify({'error': 'File not found'}), 404
-    return send_file(file_path)
+    return send_from_directory(app.config['UPLOAD_FOLDER'] / ses_id, filename)
 
 @app.route('/predict', methods=['POST'])
 def predict():

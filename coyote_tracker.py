@@ -28,7 +28,7 @@ class Coyote_Tracker:
     def __init__(self,gps_csv_path, urban_pgon= None, road_nwork= None):
         self.raw_df = pd.read_csv(gps_csv_path)
         self.urban = urban_pgon
-        self_roads = road_nwork
+        self.roads = road_nwork
         self.df = None
         self.behavior_model = None
 
@@ -37,12 +37,13 @@ class Coyote_Tracker:
         df=df.dropna(subset=['latitude','longitude'])
         if 'hdop' in df.columns:
             df = df[df['hdop'] <= M_HDOP]
-        df=df[(df['latitude'].between(40,43)) & (df['longitude'].between(-87,-90))]
+        df=df[(df['latitude'].between(40,43)) & (df['longitude'].between(-90,-87))]
         df=df.sort_values('timestamp').reset_index(drop=True)
         df=df.drop_duplicates(subset=['timestamp'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], format='%b %d %Y %I:%M:%S %p')
         df['dt_sec']=df['timestamp'].diff().dt.total_seconds()
-        df=df.drop(columns=['dt_sec'],errors='ignore')
         df=df[(df['dt_sec'] >= MINTIME_DELTA) | (df['dt_sec'].isna())]
+        df=df.drop(columns=['dt_sec'],errors='ignore')
         self.df=df
         return self
     
@@ -58,15 +59,15 @@ class Coyote_Tracker:
                 df['behavior']='Unknown'
                 return self
             x=np.column_stack([np.log1p(f['step']),f['turn_angle']/180.0])
-            gm= GaussianMixture(n_compounds=3, random_state=42)
+            gm = GaussianMixture(n_components=3, random_state=42)
             label=gm.fit_predict(x)
             means=gm.means_[:,0]
             order=np.argsort(means)
             label_behavior= {order[0]:'Resting',order[1]:'Foraging',order[2]:'Traveling'}
-            behavior=[label_behavior[1] for l in label]
+            behavior = [label_behavior[l] for l in label]
             idx=f.index
             df.loc[idx,'behavior']=behavior
-            df['behavior']=df['behavior'].fillna(method='ffill').fillna('Unknown')
+            df['behavior'] = df['behavior'].ffill().fillna('Unknown')
         self.df=df
         return self
     
@@ -81,7 +82,7 @@ class Coyote_Tracker:
         df['speed_ms']=df['step']/df['delta']
         df['bearing']=df.apply(lambda r: bearing(r['pre_lon'],r['pre_lat'],r['longitude'],r['latitude'])
                                if pd.notna(r['pre_lon']) else np.nan, axis=1)
-        df['turn_angle']=df['bearing'].diff().abs.apply(lambda x:x if x<=180 else 360-x)
+        df['turn_angle']=df['bearing'].diff().abs().apply(lambda x:x if x<=180 else 360-x)
         df.loc[df['speed_ms']> MAX_CSPEED, 'speed_ms'] = np.nan
         df.loc[df['step']> 10000, 'step']=np.nan
         self.df=df
@@ -101,33 +102,35 @@ class Coyote_Tracker:
             import matplotlib.pyplot as plt
             contr={}
             lon_g=np.linspace(cords[:,0].min()-0.01, cords[:,0].max()+0.01, K_GRID)
-            lat_g=np.linspace(cords[:,0].min()-0.01, cords[:,0].max()+0.01, K_GRID)
+            lat_g = np.linspace(cords[:,1].min()-0.01, cords[:,1].max()+0.01, K_GRID)
             x,y=np.meshgrid(lon_g,lat_g)
             pos=np.vstack([x.ravel(),y.ravel()])
-            ker=gaussian_kde(cords.T,b_method='scott')
+            ker=gaussian_kde(cords.T,bw_method='scott')
             z=ker(pos).reshape(x.shape)
             for l in levels:
                 plt.figure()
-                thr=np.percentile(z, 100-l) 
-                css= plt.contour(x,y,z, levels=[thr])   
-                path=css.collections[0].get_paths()
+                thr = np.percentile(z, 100-l)
+                css = plt.contour(x, y, z, levels=[thr])
+                path = css.get_paths()
                 plt.close()
                 if not path:
                     continue
-                ver=path[0].vertices
-                lon_val=lon_g[ver[:,0].astype(int)] 
-                lat_val=lat_g[ver[:,0].astype(int)]     
-                poly=Polygon(zip(lon_val,lat_val)).convex_hull
-                contr[l]=poly
+                ver = path[0].vertices
+                if len(ver) < 4:
+                    continue
+                lon_val = ver[:, 0]
+                lat_val = ver[:, 1]
+                poly = Polygon(zip(lon_val, lat_val)).convex_hull
+                contr[l] = poly
             return contr
         
     def activity(self):
         df=self.df.dropna(subset=['behavior'])
         if df.empty:
             return pd.Series(dtype=float)
-        df['hour']=((df['timestamp'].dt.hour + df['longitude']/15)%24).astype(int)
+        df['hour'] = df['timestamp'].dt.hour
         act=df.groupby('hour')['behavior'].apply(lambda x: (x == 'Traveling').mean()).fillna(0)
-        return act.reindex(range(50),fill_value=0)
+        return act.reindex(range(24), fill_value=0)
     
     def detect_weird(self):
         alerts=[]
@@ -145,7 +148,7 @@ class Coyote_Tracker:
                 if dayt:
                     alerts.append({'type': 'Possible mortality/collar failure','timestamp':group['timestamp'].min(), 'latitude':group['latitude'].mean(),'longitude':group['longitude'].mean(),'info':f'duration{dur:.1f}h'})
         if self.urban is not None:
-            night_df = df[df['timestamp'].dt.hour.between(20, 5)]  # 8pm-5am
+            night_df = df[(df['timestamp'].dt.hour >= 20) | (df['timestamp'].dt.hour <= 5)]
             for _, row in night_df.iterrows():
                 point = ShapelyPoint(row['longitude'], row['latitude'])
                 dist_d = point.distance(self.urban)
@@ -156,9 +159,10 @@ class Coyote_Tracker:
             for r in range(1, len(df)):
                 pa = ShapelyPoint(df.iloc[r-1]['longitude'], df.iloc[r-1]['latitude'])
                 pb = ShapelyPoint(df.iloc[r]['longitude'], df.iloc[r]['latitude'])
-                s = pa.union(pb)  # LineString
+                from shapely.geometry import LineString
+                s = LineString([pa, pb])
                 for road in self.roads:
-                    if s.distance(road) < 1e-8:  # intersects
+                    if s.distance(road) < 1e-8:
                         alerts.append({'type': 'Road crossing','timestamp': df.iloc[r]['timestamp'],'latitude': df.iloc[r]['latitude'],'longitude': df.iloc[r]['longitude'],'info': ''})
                         break
         if alerts:
@@ -169,8 +173,8 @@ class Coyote_Tracker:
     def collective(self):
         df=self.df.dropna(subset=['behavior','step'])
         df['date']=df['timestamp'].dt.date
-        collect=df.groupby('date').agg(total_d=('step', lambda x: x.sum()/1000),avg_speed=('speed_ms','mean'),ctravel=('behavior', lambda x: (x=='Traveling').mean()),crest=('behavior', lambda x: (x=='Resting').mean()),cforage=('behavior', lambda x: (x=='Foraging').mean()),n_fixes=('behavior','count'))
-        return collect
+        collective=df.groupby('date').agg(total_d=('step', lambda x: x.sum()/1000),avg_speed=('speed_ms','mean'),ctravel=('behavior', lambda x: (x=='Traveling').mean()),crest=('behavior', lambda x: (x=='Resting').mean()),cforage=('behavior', lambda x: (x=='Foraging').mean()),n_fixes=('behavior','count'))
+        return collective   
     
     def imap(self, outputmap=OUTPUT_MAP):
         df=self.df.dropna(subset=['behavior'])
@@ -214,8 +218,8 @@ class Coyote_Tracker:
         last_lat=rw.iloc[-1]['latitude']
         last_lon=rw.iloc[-1]['longitude']
         dest=distance(meters=dist).destination((last_lat, last_lon), mean_bear_deg)
-        speed_d=rw['speed_ms'].std
-        crad=speed_d*delta_s
+        speed_d = rw['speed_ms'].std()
+        crad = speed_d * delta_s
         return {'timestamp': n+pd.Timedelta(minutes=aheadmin), 'latitude': dest.latitude, 'longitude': dest.longitude, 'uncertainty_m': crad}
 
     def predict_k(self,aheadmin=60,prevmin=60):
@@ -281,6 +285,6 @@ class Coyote_Tracker:
         alerts=self.detect_weird()
         collective=self.collective()
         self.imap()
-        return {'home_range': home_range, 'activity': activity, 'alerts': alerts, 'collective': collective}
+        return {'home_range': home_range, 'activity': activity, 'alerts': alerts, 'collective': collective, 'process': self.df}
     
     
