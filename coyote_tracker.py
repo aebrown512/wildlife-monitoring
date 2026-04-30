@@ -30,10 +30,11 @@ def turning_a(b,c):
     return dif if dif <= 180 else 360 - dif
 
 class Coyote_Tracker:
-    def __init__(self,gps_csv_path, urban_pgon= None, road_nwork= None):
+    def __init__(self,gps_csv_path, urban_pgon= None, road_nwork= None, zones_geojson=None):
         self.raw_df = pd.read_csv(gps_csv_path)
         self.urban = urban_pgon
         self.roads = road_nwork
+        self.zones_geojson = zones_geojson
         self.df = None
         self.behavior_model = None
 
@@ -196,6 +197,10 @@ class Coyote_Tracker:
             folium.CircleMarker(location=[row['latitude'], row['longitude']], radius=3, color=color.get(row['behavior'],'gray'), fill=True).add_to(m)
         points=[(row['latitude'], row['longitude']) for _, row in df.iterrows()]
         folium.PolyLine(points, color='black', weight=1).add_to(m)
+        if self.zones_geojson is not None:
+            folium.GeoJson(self.zones_geojson, name='activity_zones',
+                       style_function=lambda x: {'fillColor': 'orange', 'color': 'red', 'weight': 2, 'fillOpacity': 0.3}
+                       ).add_to(m)
         m.save(outputmap)
         print(f"Map saved to {outputmap}")
 
