@@ -55,6 +55,12 @@ def upload():
         road_p=ses_dir / secure_filename(road_f.filename)
         road_f.save(road_p)
 
+    dem_path = None
+    dem_f = request.files.get('dem_f')
+    if dem_f and dem_f.filename.lower().endswith(('.tif', '.tiff')):
+        dem_path = ses_dir / secure_filename(dem_f.filename)
+        dem_f.save(dem_path)
+
     try:
         if urban_p:
             with open(urban_p,'r') as f:
@@ -107,6 +113,21 @@ def upload():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    
+@app.route('/activity_zones/<ses_id>', methods=['GET'])
+def activity_zones(ses_id):
+    ses_dir = app.config['UPLOAD_FOLDER'] / ses_id
+    process_csv = ses_dir / 'process.csv'
+    if not process_csv.exists():
+        return jsonify({'error': 'Session not found'}), 404
+    try:
+        tracker = Coyote_Tracker(str(process_csv))
+        tracker.preproc()
+        tracker.movement_metrics()
+        zones = tracker.predict_activity_zones(dem_path=None)
+        return jsonify(zones)
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
     
 @app.route('/get_file/<ses_id>/<filename>')    

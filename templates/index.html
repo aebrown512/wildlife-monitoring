@@ -30,7 +30,6 @@
 </nav>
 
 <div class="container mt-4">
-    <!-- Upload Form -->
     <div class="card">
         <div class="card-header b-primary text-black" style="background-color:pink;">
             <h5><i class=""></i> Upload GPS Data</h5>
@@ -50,6 +49,11 @@
                     <label class="form-label">Road Network (GeoJSON) - Optional</label>
                     <input type="file" class="form-control" name="road_f" accept=".geojson">
                 </div>
+                <div class="mb-3">
+                    <label class="form-label">Digital Elevation Model (GeoTIFF) - Optional</label>
+                    <input type="file" class="form-control" name="dem_f" accept=".tif,.tiff">
+                    <small class="form-text text-muted">Used for terrain suitability (slope/aspect).</small>
+                </div>
                 <button type="submit" class="btn btn-coyote" id="submitBtn">
                     <i class="fas fa-chart-line"></i> Analyze Coyote Movement
                 </button>
@@ -60,9 +64,7 @@
         </div>
     </div>
 
-    <!-- Results Section (hidden initially) -->
     <div id="resultsSection" style="display:none;">
-        <!-- Map -->
         <div class="card">
             <div class="card-header bg-success text-white">
                 <h5><i class="fas fa-map-marked-alt"></i> Trajectory Map</h5>
@@ -72,7 +74,7 @@
             </div>
         </div>
 
-        <!-- Prediction Card -->
+    
         <div class="card prediction-card">
             <div class="card-header">
                 <h5><i class="fas fa-clock"></i> Short-term Prediction (30 min ahead)</h5>
@@ -94,7 +96,6 @@
             </div>
         </div>
 
-        <!-- Alerts -->
         <div class="card">
             <div class="card-header bg-danger text-white">
                 <h5><i class="fas fa-exclamation-triangle"></i> Anomaly Alerts</h5>
@@ -103,15 +104,12 @@
                 <p class="text-muted">No alerts detected.</p>
             </div>
         </div>
-
-        <!-- Download Links -->
         <div class="text-center mt-3 mb-5">
             <a id="downloadCsvLink" class="btn btn-secondary" target="_blank"><i class="fas fa-download"></i> Download Processed CSV</a>
         </div>
     </div>
 </div>
 
-<!-- Spinner overlay -->
 <div class="spinner">
     <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
 </div>
@@ -177,7 +175,6 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
         } else {
             tbody.innerHTML = '<tr><td colspan="6">No daily data available</td></tr>';
         }
-        // Alerts
         const alertsDiv = document.getElementById('alertsBox');
         if (data.alerts && data.alerts.length) {
             let html = '<ul class="list-group">';
@@ -194,7 +191,6 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
         } else {
             alertsDiv.innerHTML = '<p class="text-success"><i class="fas fa-check-circle"></i> No anomalies detected.</p>';
         }
-        // Download link
         if (data.processed_csv_url) {
             document.getElementById('downloadCsvLink').href = data.processed_csv_url;
         }

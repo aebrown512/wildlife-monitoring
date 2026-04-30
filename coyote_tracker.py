@@ -5,8 +5,13 @@ from geopy.distance import geodesic
 from sklearn.mixture import GaussianMixture
 from scipy.spatial import ConvexHull
 from scipy.stats import gaussian_kde
-from shapely.geometry import Point as ShapelyPoint, Polygon
+from shapely.geometry import Point as ShapelyPoint, Polygon, mapping
 import warnings
+import rasterio
+import rasterio.transform
+from rasterio.transform import rowcol
+from sklearn.preprocessing import minmax_scale
+import json
 from config import *
 
 def meters(lon1,lat1,lon2,lat2):
@@ -194,6 +199,68 @@ class Coyote_Tracker:
         m.save(outputmap)
         print(f"Map saved to {outputmap}")
 
+    def _get_season(self, timestamp):
+        month = timestamp.month
+        if month in [1, 2, 12]:      
+            return 'breeding'
+        elif 3 <= month <= 5:        
+            return 'denning'
+        else:                        
+            return 'dispersal'
+        
+    def load_terrain(self, dem_path):
+        from scipy.ndimage import sobel
+        with rasterio.open(dem_path) as src:
+            self.dem_data = src.read(1).astype(np.float32)
+            self.dem_transform = src.transform
+            self.dem_bounds = src.bounds
+            self.dem_crs = src.crs
+        x_g = sobel(self.dem_data, axis=1)  
+        y_g = sobel(self.dem_data, axis=0)  
+        self.slope = np.degrees(np.arctan(np.sqrt(x_g**2 + y_g**2)))
+        self.aspect = np.degrees(np.arctan2(-x_g, y_g)) % 360.0
+        self.aspect[self.slope == 0] = -1
+
+    def _sample_terrain(self, lon, lat):
+        if not hasattr(self, 'dem_data'):
+            return (np.nan, np.nan, np.nan)
+        try:
+            row, col = rowcol(self.dem_transform, lon, lat)
+            row, col = int(row), int(col)
+            if 0 <= row < self.dem_data.shape[0] and 0 <= col < self.dem_data.shape[1]:
+                elev = self.dem_data[row, col]
+                slp = self.slope[row, col]
+                asp = self.aspect[row, col]
+                return (elev if np.isfinite(elev) else np.nan,
+                        slp if np.isfinite(slp) else np.nan,
+                        asp if np.isfinite(asp) else np.nan)
+        except Exception:
+            pass
+        return (np.nan, np.nan, np.nan)
+
+    def terrain_suitability(self, slope, aspect):
+        if np.isnan(slope):
+            return 0.5
+        slope_s = 1 / (1 + np.exp((slope - 20) / 5))
+        if np.isnan(aspect) or aspect < 0:
+            aspect_s = 0.5
+        else:
+            aspect_s = (np.cos(np.radians(aspect - 180)) + 1) / 2
+        return 0.6 * slope_s + 0.4 * aspect_s
+
+    def time_suitability(self, hour):
+        hour_n = hour / 24.0
+        suitability = 0.6 + 0.4 * np.sin(np.pi * hour_n - 0.2)
+        return np.clip(suitability, 0.2, 1.0)
+
+    def season_suitability(self, season):
+        if season == 'breeding':
+            return 0.8   
+        elif season == 'denning':
+            return 0.9  
+        else: 
+            return 1.0  
+
     def predict_linear(self,aheadmin=60,prevmin=60):
         from geopy.distance import distance
         if self.df is None or len(self.df)<2:
@@ -275,6 +342,72 @@ class Coyote_Tracker:
         else:
             pre['constrained']=False
         return pre
+    
+    def predict_activity_zones(self, dem_path=None, grid_res_m=50, buffer_km=2):
+        from skimage import measure
+        if self.df is None or len(self.df) < 5:
+            return None
+        if dem_path:
+            self.load_terrain(dem_path)
+        lat_v = self.df['latitude'].values
+        lon_v = self.df['longitude'].values
+        lat_c, lon_c = lat_v.mean(), lon_v.mean()
+        deg_per_m = 1 / 111320.0
+        half_deg = buffer_km * 1000 * deg_per_m
+        min_lat, max_lat = lat_v.min() - half_deg, lat_v.max() + half_deg
+        min_lon, max_lon = lon_v.min() - half_deg, lon_v.max() + half_deg
+        res_deg = grid_res_m * deg_per_m
+        lon_grid = np.arange(min_lon, max_lon, res_deg)
+        lat_grid = np.arange(min_lat, max_lat, res_deg)
+        nx, ny = len(lon_grid), len(lat_grid)
+        prob_grid = np.zeros((ny, nx))
+        coords = np.vstack([lon_v, lat_v])
+        try:
+            kde = gaussian_kde(coords, bw_method='scott')
+            grid_lon, grid_lat = np.meshgrid(lon_grid, lat_grid)
+            pos = np.vstack([grid_lon.ravel(), grid_lat.ravel()])
+            density = kde(pos).reshape(grid_lon.shape)
+            density = minmax_scale(density.ravel()).reshape(density.shape)
+        except:
+            density = np.ones((ny, nx)) / (nx*ny) 
+        time_w = np.exp(-np.arange(len(self.df))[::-1] / (len(self.df)/3))
+        time_w = time_w / time_w.sum()
+        recency_factor = 1.0  
+        terrain_score = np.ones((ny, nx))
+        if hasattr(self, 'dem_data'):
+            for i, lat in enumerate(lat_grid):
+                for j, lon in enumerate(lon_grid):
+                    elev, slp, asp = self._sample_terrain(lon, lat)
+                    terrain_score[i, j] = self._terrain_suitability(slp, asp)
+        median_dt = self.df['timestamp'].median()
+        hour = median_dt.hour
+        season = self._get_season(median_dt)
+        time_score = self._time_suitability(hour)
+        season_score = self._season_suitability(season)
+        prob_grid = density * terrain_score * time_score * season_score
+        prob_grid = prob_grid / prob_grid.max()  
+        contours = []
+        for level in [0.5, 0.7, 0.9]:
+            contours_at_level = measure.find_contours(prob_grid, level)
+            for contour in contours_at_level:
+                lon_v_c = lon_grid[contour[:, 1].astype(int)]
+                lat_v_c = lat_grid[contour[:, 0].astype(int)]
+                if len(lon_v_c) < 4:
+                    continue
+                poly = Polygon(zip(lon_v_c, lat_v_c))
+                if poly.is_valid and poly.area > 0:
+                    contours.append({
+                        'level': int(level*100),
+                        'geometry': mapping(poly)
+                    })
+        return {
+            'geojson': {
+                'type': 'FeatureCollection',
+                'features': [{'type': 'Feature', 'properties': {'probability': c['level']}, 'geometry': c['geometry']} for c in contours]
+            },
+            'grid_shape': prob_grid.shape,
+            'bounds': (min_lon, min_lat, max_lon, max_lat)
+        }
     
     def predict_ai(self, aheadmin=60):
         from groq import Groq
