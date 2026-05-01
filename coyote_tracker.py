@@ -30,10 +30,11 @@ def turning_a(b,c):
     return dif if dif <= 180 else 360 - dif
 
 class Coyote_Tracker:
-    def __init__(self,gps_csv_path, urban_pgon= None, road_nwork= None, zones_geojson=None):
+    def __init__(self,gps_csv_path, urban_pgon= None, road_nwork= None, zones_geojson=None, collar_col='collar_id'):
         self.raw_df = pd.read_csv(gps_csv_path)
         self.urban = urban_pgon
         self.roads = road_nwork
+        self.collar_col = collar_col
         self.zones_geojson = zones_geojson
         self.df = None
         self.behavior_model = None
@@ -182,28 +183,51 @@ class Coyote_Tracker:
         collective=df.groupby('date').agg(total_d=('step', lambda x: x.sum()/1000),avg_speed=('speed_ms','mean'),ctravel=('behavior', lambda x: (x=='Traveling').mean()),crest=('behavior', lambda x: (x=='Resting').mean()),cforage=('behavior', lambda x: (x=='Foraging').mean()),n_fixes=('behavior','count'))
         return collective   
     
-    def imap(self, outputmap=OUTPUT_MAP):
-        df=self.df.dropna(subset=['behavior'])
-        if df.empty:
-            print("No data for map.")
-            return
+    def process_all_collars(self):
+        if self.collar_col not in self.raw_df.columns:
+            self.raw_df[self.collar_col] = 'single'
+        co = self.raw_df[self.collar_col].unique()
+        all_result = {}
+        for c in c:
+            collar_df = self.raw_df[self.raw_df[self.collar_col] == c].copy()
+            temp_tracker = Coyote_Tracker(None, self.urban, self.roads,collar_col=self.collar_col)
+            temp_tracker.raw_df = collar_df
+            temp_tracker.preproc()
+            temp_tracker.movement_metrics()
+            temp_tracker.behavior_classified()
+            alert = temp_tracker.detect_weird()
+            collective = temp_tracker.collective()
+            home_range = temp_tracker.home_range()
+            activity = temp_tracker.activity()
+            all_result[c] = {'process': temp_tracker.df,'alerts': alert,'collective': collective,'home_range': home_range,'activity': activity,'map': None }
+            self.collar_results = all_result
+        return all_result
+    
+    def imap(self, outputmap=OUTPUT_MAP, c_id=None):
         import matplotlib.pyplot as plt
         import folium
-        cen_lat=df['latitude'].mean()
-        cen_lon=df['longitude'].mean()
-        m=folium.Map(location=[cen_lat,cen_lon], zoom_start=12)
-        color={'Resting':'blue','Foraging':'green','Traveling':'red','Unknown':'gray'}
-        for _, row in df.iterrows():
-            folium.CircleMarker(location=[row['latitude'], row['longitude']], radius=3, color=color.get(row['behavior'],'gray'), fill=True).add_to(m)
-        points=[(row['latitude'], row['longitude']) for _, row in df.iterrows()]
-        folium.PolyLine(points, color='black', weight=1).add_to(m)
-        if self.zones_geojson is not None:
-            folium.GeoJson(self.zones_geojson, name='activity_zones',
-                       style_function=lambda x: {'fillColor': 'orange', 'color': 'red', 'weight': 2, 'fillOpacity': 0.3}
-                       ).add_to(m)
-        m.save(outputmap)
-        print(f"Map saved to {outputmap}")
-
+        if c_id is not None and c_id in self.collar_results:
+            df = self.collar_results[c_id]['process'].dropna(subset=['behavior'])
+            title = f"Coyote {c_id}"
+        else:
+            df = pd.concat([res['process'] for res in self.collar_results.values()])
+            import folium
+            cen_lat = df['latitude'].mean()
+            cen_lon = df['longitude'].mean()
+            m = folium.Map(location=[cen_lat, cen_lon], zoom_start=12)
+            color_palette = ['blue', 'green', 'red', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen', 'cadetblue', 'darkpurple', 'white', 'pink', 'lightblue', 'lightgreen', 'gray', 'black', 'lightgray']
+            collar_list = list(self.collar_results.keys())
+            for idx, collar in enumerate(collar_list):
+                color = color_palette[idx % len(color_palette)]
+                sub_df = self.collar_results[collar]['process'].dropna(subset=['behavior'])
+                for _, row in sub_df.iterrows():
+                    folium.CircleMarker(location=[row['latitude'], row['longitude']], radius=3,
+                                        color=color, fill=True, popup=f"Collar {collar}").add_to(m)
+                points = [(row['latitude'], row['longitude']) for _, row in sub_df.iterrows()]
+                folium.PolyLine(points, color=color, weight=1, popup=f"Collar {collar}").add_to(m)
+            m.save(outputmap)
+            return
+        
     def _get_season(self, timestamp):
         month = timestamp.month
         if month in [1, 2, 12]:      
@@ -471,6 +495,16 @@ class Coyote_Tracker:
         collective=self.collective()
         self.imap()
         ai_prediction = None
+        self.process_all_collars()
+        combined_process = pd.concat([res['process'] for res in self.collar_results.values()])
+        combined_alerts = pd.concat([res['alerts'] for res in self.collar_results.values()]) if any(res['alerts'] is not None for res in self.collar_results.values()) else pd.DataFrame()
+        combined_collective = pd.concat([res['collective'] for res in self.collar_results.values()]) if any(res['collective'] is not None for res in self.collar_results.values()) else pd.DataFrame()
+        self.per_collar = {
+            collar: {
+                'alerts': res['alerts'].to_dict(orient='records') if not res['alerts'].empty else [],'collective': res['collective'].reset_index().fillna(0).to_dict(orient='records') if not res['collective'].empty else [],'home_range_area': None, }
+            for collar, res in self.collar_results.items()
+        } 
+        return {'process': combined_process,'alerts': combined_alerts,'collective': combined_collective,'per_collar': self.per_collar}
         try:
             ai_prediction = self.predict_ai(aheadmin=60)
         except Exception as e:

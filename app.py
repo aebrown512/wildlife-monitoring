@@ -74,8 +74,15 @@ def upload():
             for feature in d.get('features', []):
                 if feature['geometry']['type'] == 'LineString':
                     road_n.append(shape(feature['geometry']))
-        
-        tracker=Coyote_Tracker(str(gps_path),urban_p,road_n)
+
+        collar_col = 'c_id' 
+        if 'c_id' not in df.columns and 'animal_id' not in df.columns:
+            df['c_id'] = 'unknown'
+            df.to_csv(gps_path, index=False)
+            collar_col = 'c_id'
+        else:
+            collar_col = 'c_id' if 'c_id' in df.columns else 'a_id'
+        tracker=Coyote_Tracker(str(gps_path),urban_p,road_n,collar_col=collar_col)
         result=tracker.pipeline()
 
         moutput=ses_dir/'map.html'
@@ -103,6 +110,7 @@ def upload():
             'processed_csv_url': url_for('get_file', ses_id=ses_id, filename='process.csv'),
             'collective': collective,
             'alerts': alert,
+            'per_collar': result.get('per_collar', {}),   # <-- ADD THIS LINE
             'prediction': predict,
             'stats': {
                 'num_fixes': len(result['process']),
