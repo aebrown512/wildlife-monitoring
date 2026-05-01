@@ -34,6 +34,7 @@ class Coyote_Tracker:
         self.raw_df = pd.read_csv(gps_csv_path)
         self.urban = urban_pgon
         self.roads = road_nwork
+        self.collar_results = {} 
         self.collar_col = collar_col
         self.zones_geojson = zones_geojson
         self.df = None
@@ -504,6 +505,15 @@ class Coyote_Tracker:
                 'alerts': res['alerts'].to_dict(orient='records') if not res['alerts'].empty else [],'collective': res['collective'].reset_index().fillna(0).to_dict(orient='records') if not res['collective'].empty else [],'home_range_area': None, }
             for collar, res in self.collar_results.items()
         } 
+        self.process_all_collars() 
+        if not self.collar_results:
+            return {
+                'process': pd.DataFrame(),
+                'alerts': pd.DataFrame(),
+                'collective': pd.DataFrame(),
+                'per_collar': {}
+            }
+        combined_process = pd.concat([res['process'] for res in self.collar_results.values()])
         return {'process': combined_process,'alerts': combined_alerts,'collective': combined_collective,'per_collar': self.per_collar}
         try:
             ai_prediction = self.predict_ai(aheadmin=60)
