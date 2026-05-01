@@ -152,23 +152,23 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
                 <p><i class="fas fa-map-marker-alt"></i> <strong>Predicted at ${data.prediction.timestamp}</strong><br>
                 Latitude: ${data.prediction.latitude.toFixed(5)}<br>
                 Longitude: ${data.prediction.longitude.toFixed(5)}<br>
-                Confidence radius: ±${data.prediction.confidence_radius_m.toFixed(0)} meters</p>
+                Confidence radius: ±${data.prediction.cradius_m.toFixed(0)} meters</p>
             `;
         } else {
             document.getElementById('predictionBox').innerHTML = '<p class="text-warning">Prediction not available (insufficient data).</p>';
         }
         const tbody = document.querySelector('#summaryTable tbody');
         tbody.innerHTML = '';
-        if (data.daily_summary && data.daily_summary.length) {
-            data.daily_summary.forEach(row => {
+        if (data.data_collective && data.data_collective.length) {
+            data.data_collective.forEach(row => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${row.date}</td>
-                    <td>${row.total_distance_km.toFixed(2)}</td>
-                    <td>${(row.pct_traveling * 100).toFixed(1)}%</td>
-                    <td>${(row.pct_resting * 100).toFixed(1)}%</td>
-                    <td>${(row.pct_foraging * 100).toFixed(1)}%</td>
-                    <td>${row.num_fixes}</td>
+                    <td>${row.total_d.toFixed(2)}</td>
+                    <td>${(row.ctravel * 100).toFixed(1)}%</td>
+                    <td>${(row.crest * 100).toFixed(1)}%</td>
+                    <td>${(row.cforage * 100).toFixed(1)}%</td>
+                    <td>${row.n_fixes}</td>
                 `;
                 tbody.appendChild(tr);
             });

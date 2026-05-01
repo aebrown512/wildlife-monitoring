@@ -157,9 +157,9 @@ def predict():
         return jsonify({'error': 'Session not found'}), 404
     try:
         track = Coyote_Tracker(str(gps_p))
-        track.preprocess()
-        track.compute_movement_metrics()
-        track.classify_behavior(method='gm')
+        track.preproc()
+        track.movement_metrics()
+        track.behavior_classified(method='gm')
         if method == 'linear':
             pred = track.predict_linear(aheadmin=aheadmin)
         else:

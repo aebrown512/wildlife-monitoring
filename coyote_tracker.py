@@ -30,13 +30,12 @@ def turning_a(b,c):
     return dif if dif <= 180 else 360 - dif
 
 class Coyote_Tracker:
-    def __init__(self,gps_csv_path, urban_pgon= None, road_nwork= None, zones_geojson=None, collar_col='collar_id'):
-        self.raw_df = pd.read_csv(gps_csv_path)
+    def __init__(self, gps_csv_path, urban_pgon=None, road_nwork=None, collar_col='collar_id'):
+        self.raw_df = pd.read_csv(gps_csv_path) if gps_csv_path else pd.DataFrame()
         self.urban = urban_pgon
         self.roads = road_nwork
-        self.collar_results = {} 
         self.collar_col = collar_col
-        self.zones_geojson = zones_geojson
+        self.collar_results = {}
         self.df = None
         self.behavior_model = None
 
@@ -45,7 +44,7 @@ class Coyote_Tracker:
         df=df.dropna(subset=['latitude','longitude'])
         if 'hdop' in df.columns:
             df = df[df['hdop'] <= M_HDOP]
-        df=df[(df['latitude'].between(40,43)) & (df['longitude'].between(-90,-87))]
+        df = df[(df['latitude'].between(-90, 90)) & (df['longitude'].between(-180, 180))]
         df=df.sort_values('timestamp').reset_index(drop=True)
         df=df.drop_duplicates(subset=['timestamp'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], format='%b %d %Y %I:%M:%S %p')
@@ -185,24 +184,51 @@ class Coyote_Tracker:
         return collective   
     
     def process_all_collars(self):
+        import tempfile, os
+
         if self.collar_col not in self.raw_df.columns:
             self.raw_df[self.collar_col] = 'single'
-        co = self.raw_df[self.collar_col].unique()
-        all_result = {}
-        for c in co:
-            collar_df = self.raw_df[self.raw_df[self.collar_col] == c].copy()
-            temp_tracker = Coyote_Tracker(None, self.urban, self.roads,collar_col=self.collar_col)
-            temp_tracker.raw_df = collar_df
+
+        collars = self.raw_df[self.collar_col].unique()
+        print(f"Found collars: {collars}")
+
+        for collar in collars:
+            collar_df = self.raw_df[self.raw_df[self.collar_col] == collar].copy()
+            print(f"Collar {collar}: {len(collar_df)} rows")
+
+        if collar_df.empty:
+            print(f"  -> Skipping {collar}: empty")
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
+            collar_df.to_csv(tmp.name, index=False)
+            tmp_path = tmp.name
+
+        try:
+            temp_tracker = Coyote_Tracker(tmp_path, self.urban, self.roads, self.collar_col)
             temp_tracker.preproc()
+            print(f"  -> After preproc: {len(temp_tracker.df) if temp_tracker.df is not None else 'None'} rows")
+
+            if temp_tracker.df is None or temp_tracker.df.empty:
+                print(f"  -> Skipping {collar}: preproc filtered everything out")
+
             temp_tracker.movement_metrics()
             temp_tracker.behavior_classified()
-            alert = temp_tracker.detect_weird()
-            collective = temp_tracker.collective()
-            home_range = temp_tracker.home_range()
-            activity = temp_tracker.activity()
-            all_result[c] = {'process': temp_tracker.df,'alerts': alert,'collective': collective,'home_range': home_range,'activity': activity,'map': None }
-            self.collar_results = all_result
-        return all_result
+
+            self.collar_results[collar] = {
+                'process':    temp_tracker.df,
+                'alerts':     temp_tracker.detect_weird(),
+                'collective': temp_tracker.collective(),
+                'home_range': temp_tracker.home_range(),
+                'activity':   temp_tracker.activity()
+            }
+            print(f"  -> Stored results for collar {collar}")
+
+        except Exception as e:
+            import traceback
+            print(f"  -> ERROR processing collar {collar}: {e}")
+            traceback.print_exc()
+        finally:
+            os.unlink(tmp_path)
     
     def imap(self, outputmap=OUTPUT_MAP, c_id=None):
         import matplotlib.pyplot as plt
@@ -494,7 +520,6 @@ class Coyote_Tracker:
         activity=self.activity()
         alerts=self.detect_weird()
         collective=self.collective()
-        self.imap()
         ai_prediction = None
         self.process_all_collars()
         combined_process = pd.concat([res['process'] for res in self.collar_results.values()])
@@ -505,7 +530,6 @@ class Coyote_Tracker:
                 'alerts': res['alerts'].to_dict(orient='records') if not res['alerts'].empty else [],'collective': res['collective'].reset_index().fillna(0).to_dict(orient='records') if not res['collective'].empty else [],'home_range_area': None, }
             for collar, res in self.collar_results.items()
         } 
-        self.process_all_collars() 
         if not self.collar_results:
             return {
                 'process': pd.DataFrame(),
@@ -515,12 +539,17 @@ class Coyote_Tracker:
             }
         if self.collar_results:
             combined_process = pd.concat([res['process'] for res in self.collar_results.values()])
-            combined_alerts = pd.concat([res['alerts'] for res in self.collar_results.values() if not res['alerts'].empty])
-            combined_collective = pd.concat([res['collective'] for res in self.collar_results.values() if not res['collective'].empty])
+            alert_list = [res['alerts'] for res in self.collar_results.values()
+              if res['alerts'] is not None and not res['alerts'].empty]
+            combined_alerts = pd.concat(alert_list, ignore_index=True) if alert_list else pd.DataFrame()
+            collective_list = [res['collective'] for res in self.collar_results.values()
+                   if res['collective'] is not None and not res['collective'].empty]
+            combined_collective = pd.concat(collective_list, ignore_index=True) if collective_list else pd.DataFrame()
         else:
             combined_process = pd.DataFrame()
             combined_alerts = pd.DataFrame()
             combined_collective = pd.DataFrame()
+        self.imap()
         return {'process': combined_process,'alerts': combined_alerts,'collective': combined_collective,'per_collar': self.per_collar}
         try:
             ai_prediction = self.predict_ai(aheadmin=60)

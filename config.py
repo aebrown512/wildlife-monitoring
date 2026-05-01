@@ -12,3 +12,5 @@ URBAN_BAR=100
 OUTPUT_MAP='coyote_map.html'
 OUTPUT_CSV='coyote_behavior.csv'
 OUTPUT_COLLECT='collect.csv'
+OUTPUT_DAILY_SUMMARY = 'daily_summary.csv'
+OUTPUT_ALERTS = 'alerts.csv'
