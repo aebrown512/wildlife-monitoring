@@ -189,7 +189,7 @@ class Coyote_Tracker:
             self.raw_df[self.collar_col] = 'single'
         co = self.raw_df[self.collar_col].unique()
         all_result = {}
-        for c in c:
+        for c in co:
             collar_df = self.raw_df[self.raw_df[self.collar_col] == c].copy()
             temp_tracker = Coyote_Tracker(None, self.urban, self.roads,collar_col=self.collar_col)
             temp_tracker.raw_df = collar_df
@@ -513,7 +513,14 @@ class Coyote_Tracker:
                 'collective': pd.DataFrame(),
                 'per_collar': {}
             }
-        combined_process = pd.concat([res['process'] for res in self.collar_results.values()])
+        if self.collar_results:
+            combined_process = pd.concat([res['process'] for res in self.collar_results.values()])
+            combined_alerts = pd.concat([res['alerts'] for res in self.collar_results.values() if not res['alerts'].empty])
+            combined_collective = pd.concat([res['collective'] for res in self.collar_results.values() if not res['collective'].empty])
+        else:
+            combined_process = pd.DataFrame()
+            combined_alerts = pd.DataFrame()
+            combined_collective = pd.DataFrame()
         return {'process': combined_process,'alerts': combined_alerts,'collective': combined_collective,'per_collar': self.per_collar}
         try:
             ai_prediction = self.predict_ai(aheadmin=60)
