@@ -47,7 +47,10 @@ class Coyote_Tracker:
         df = df[(df['latitude'].between(-90, 90)) & (df['longitude'].between(-180, 180))]
         df=df.sort_values('timestamp').reset_index(drop=True)
         df=df.drop_duplicates(subset=['timestamp'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], format='%b %d %Y %I:%M:%S %p')
+        try:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='%b %d %Y %I:%M:%S %p')
+        except Exception:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], infer_datetime_format=True)
         df['dt_sec']=df['timestamp'].diff().dt.total_seconds()
         df=df[(df['dt_sec'] >= MINTIME_DELTA) | (df['dt_sec'].isna())]
         df=df.drop(columns=['dt_sec'],errors='ignore')
@@ -230,31 +233,106 @@ class Coyote_Tracker:
         finally:
             os.unlink(tmp_path)
     
-    def imap(self, outputmap=OUTPUT_MAP, c_id=None):
-        import matplotlib.pyplot as plt
+    def imap(self, outputmap=OUTPUT_MAP, zones_geojson=None):
         import folium
-        if c_id is not None and c_id in self.collar_results:
-            df = self.collar_results[c_id]['process'].dropna(subset=['behavior'])
-            title = f"Coyote {c_id}"
-        else:
-            df = pd.concat([res['process'] for res in self.collar_results.values()])
-            import folium
-            cen_lat = df['latitude'].mean()
-            cen_lon = df['longitude'].mean()
-            m = folium.Map(location=[cen_lat, cen_lon], zoom_start=12)
-            color_palette = ['blue', 'green', 'red', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen', 'cadetblue', 'darkpurple', 'white', 'pink', 'lightblue', 'lightgreen', 'gray', 'black', 'lightgray']
-            collar_list = list(self.collar_results.keys())
-            for idx, collar in enumerate(collar_list):
-                color = color_palette[idx % len(color_palette)]
-                sub_df = self.collar_results[collar]['process'].dropna(subset=['behavior'])
-                for _, row in sub_df.iterrows():
-                    folium.CircleMarker(location=[row['latitude'], row['longitude']], radius=3,
-                                        color=color, fill=True, popup=f"Collar {collar}").add_to(m)
-                points = [(row['latitude'], row['longitude']) for _, row in sub_df.iterrows()]
-                folium.PolyLine(points, color=color, weight=1, popup=f"Collar {collar}").add_to(m)
-            m.save(outputmap)
+        if self.df is None or self.df.empty:
+            print("No data for map.")
             return
-        
+        df = self.df.dropna(subset=['behavior'])
+        if df.empty:
+            print("No behavior-classified data for map.")
+            return
+        cen_lat = df['latitude'].mean()
+        cen_lon = df['longitude'].mean()
+        m = folium.Map(location=[cen_lat, cen_lon], zoom_start=12)
+        if self.collar_col in df.columns and df[self.collar_col].nunique() > 1:
+            palette = [
+                'blue', 'green', 'red', 'purple', 'orange',
+                'cadetblue', 'darkred', 'darkgreen', 'pink', 'lightred'
+            ]
+            collars = df[self.collar_col].unique()
+            collar_color = {c: palette[i % len(palette)] for i, c in enumerate(collars)}
+            for _, row in df.iterrows():
+                c = collar_color.get(row[self.collar_col], 'clear')
+                folium.CircleMarker(
+                    location=[row['latitude'], row['longitude']],
+                    radius=4,
+                    color=c,
+                    fill=True,
+                    fill_opacity=0.8,
+                    popup=(
+                        f"Collar: {row[self.collar_col]}<br>"
+                        f"Behavior: {row.get('behavior', 'Unknown')}<br>"
+                        f"Speed: {round(row['speed_ms'], 3) if 'speed_ms' in row and not pd.isna(row['speed_ms']) else 'N/A'} m/s<br>"
+                        f"Time: {row['timestamp']}"
+                    )
+                ).add_to(m)
+            for collar in collars:
+                sub = df[df[self.collar_col] == collar].sort_values('timestamp')
+                points = [(r['latitude'], r['longitude']) for _, r in sub.iterrows()]
+                if len(points) > 1:
+                    folium.PolyLine(points,color=collar_color[collar],weight=1.5,opacity=0.7,tooltip=f"Collar {collar}").add_to(m)
+            legend_items = ''.join(
+                f'<span style="color:{collar_color[c]}">&#9679;</span> Collar {c}<br>'
+                for c in collars
+            )
+            legend_html = f"""
+            <div style="position:fixed; bottom:30px; left:30px; z-index:1000;
+                        background:white; padding:10px; border-radius:8px;
+                        border:1px solid clear; font-size:13px;">
+            <b>Collars</b><br>{legend_items}
+            </div>
+            """
+            m.get_root().html.add_child(folium.Element(legend_html))
+        else:
+            behavior_color = {
+                'Resting':   'blue',
+                'Foraging':  'green',
+                'Traveling': 'red',
+                'Unknown':   'clear'
+            }
+            for _, row in df.iterrows():
+                behavior = row.get('behavior', 'Unknown')
+                speed_val = (
+                    round(row['speed_ms'], 3)
+                    if 'speed_ms' in row
+                    else np.nan
+                )
+                folium.CircleMarker(
+                    location=[row['latitude'], row['longitude']],
+                    radius=4,
+                    color=behavior_color.get(behavior, 'clear'),
+                    fill=True,
+                    fill_opacity=0.8,
+                    popup=(
+                        f"Behavior: {behavior}<br>"
+                        f"Speed: {speed_val} m/s<br>"
+                        f"Time: {row['timestamp']}"
+                    )
+                ).add_to(m)
+            points = [
+            (row['latitude'], row['longitude'])
+            for _, row in df.sort_values('timestamp').iterrows()
+            ]
+            if len(points) > 1:
+                folium.PolyLine(points, color='black', weight=1.5, opacity=0.6).add_to(m)
+            legend_html = """
+            <div style="position:fixed; bottom:30px; left:30px; z-index:1000;
+                        background:white; padding:10px; border-radius:8px;
+                        border:1px solid clear; font-size:13px;">
+            <b>Behavior</b><br>
+            <span style="color:blue">&#9679;</span> Resting<br>
+            <span style="color:green">&#9679;</span> Foraging<br>
+            <span style="color:red">&#9679;</span> Traveling<br>
+            <span style="color:clear">&#9679;</span> Unknown
+            </div>
+            """
+            m.get_root().html.add_child(folium.Element(legend_html))
+        folium.LayerControl().add_to(m)
+        m.save(outputmap)
+        print(f"Map saved to {outputmap}")
+
+
     def _get_season(self, timestamp):
         month = timestamp.month
         if month in [1, 2, 12]:      
