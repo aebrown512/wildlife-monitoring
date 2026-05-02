@@ -188,6 +188,7 @@ class Coyote_Tracker:
     
     def process_all_collars(self):
         import tempfile, os
+        import traceback
         if self.collar_col not in self.raw_df.columns:
             self.raw_df[self.collar_col] = 'single'
         collars = self.raw_df[self.collar_col].unique()
@@ -217,7 +218,6 @@ class Coyote_Tracker:
             }
             print(f"  -> Stored results for collar {c}")
         except Exception as e:
-            import traceback
             print(f"  -> ERROR processing collar {c}: {e}")
             traceback.print_exc()
         finally:
