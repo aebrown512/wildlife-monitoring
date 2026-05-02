@@ -192,11 +192,11 @@ class Coyote_Tracker:
             self.raw_df[self.collar_col] = 'single'
         collars = self.raw_df[self.collar_col].unique()
         print(f"Found collars: {collars}")
-        for collar in collars:
-            collar_df = self.raw_df[self.raw_df[self.collar_col] == collar].copy()
-            print(f"Collar {collar}: {len(collar_df)} rows")
+        for c in collars:
+            collar_df = self.raw_df[self.raw_df[self.collar_col] == c].copy()
+            print(f"Collar {c}: {len(collar_df)} rows")
         if collar_df.empty:
-            print(f"  -> Skipping {collar}: empty")
+            print(f"  -> Skipping {c}: empty")
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
             collar_df.to_csv(tmp.name, index=False)
             tmp_path = tmp.name
@@ -205,20 +205,20 @@ class Coyote_Tracker:
             temp_tracker.preproc()
             print(f"  -> After preproc: {len(temp_tracker.df) if temp_tracker.df is not None else 'None'} rows")
             if temp_tracker.df is None or temp_tracker.df.empty:
-                print(f"  -> Skipping {collar}: preproc filtered everything out")
+                print(f"  -> Skipping {c}: preproc filtered everything out")
             temp_tracker.movement_metrics()
             temp_tracker.behavior_classified()
-            self.collar_results[collar] = {
+            self.collar_results[c] = {
                 'process':    temp_tracker.df,
                 'alerts':     temp_tracker.detect_weird(),
                 'collective': temp_tracker.collective(),
                 'home_range': temp_tracker.home_range(),
                 'activity':   temp_tracker.activity()
             }
-            print(f"  -> Stored results for collar {collar}")
+            print(f"  -> Stored results for collar {c}")
         except Exception as e:
             import traceback
-            print(f"  -> ERROR processing collar {collar}: {e}")
+            print(f"  -> ERROR processing collar {c}: {e}")
             traceback.print_exc()
         finally:
             os.unlink(tmp_path)
