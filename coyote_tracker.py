@@ -629,11 +629,6 @@ class Coyote_Tracker:
             combined_collective = pd.DataFrame()
         self.imap()
         return {'process': combined_process,'alerts': combined_alerts,'collective': combined_collective,'per_collar': self.per_collar}
-        try:
-            ai_prediction = self.predict_ai(aheadmin=60)
-        except Exception as e:
-            print(f"AI prediction failed: {e}")
-        return {'home_range': home_range, 'activity': activity, 'alerts': alerts, 'collective': collective, 'process': self.df, 'ai_prediction': ai_prediction
-}
+
     
     
