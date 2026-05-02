@@ -282,9 +282,9 @@ class Coyote_Tracker:
                 'Unknown':   'clear'
             }
             legend_html = """
-            <div style="position:fixed; bottom:30px; left:30px; z-index:1000;
-                        background:white; padding:10px; border-radius:8px;
-                        border:1px solid clear; font-size:13px;">
+            <div style="position:fixed; bottom:25px; left:25px; z-index:1000;
+                        background:white; padding:9px; border-radius:8px;
+                        border:1px solid clear; font-size:12px;">
             <b>Behavior</b><br>
             <span style="color:blue">&#9679;</span> Resting<br>
             <span style="color:green">&#9679;</span> Foraging<br>
