@@ -188,35 +188,26 @@ class Coyote_Tracker:
     
     def process_all_collars(self):
         import tempfile, os
-
         if self.collar_col not in self.raw_df.columns:
             self.raw_df[self.collar_col] = 'single'
-
         collars = self.raw_df[self.collar_col].unique()
         print(f"Found collars: {collars}")
-
         for collar in collars:
             collar_df = self.raw_df[self.raw_df[self.collar_col] == collar].copy()
             print(f"Collar {collar}: {len(collar_df)} rows")
-
         if collar_df.empty:
             print(f"  -> Skipping {collar}: empty")
-
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
             collar_df.to_csv(tmp.name, index=False)
             tmp_path = tmp.name
-
         try:
             temp_tracker = Coyote_Tracker(tmp_path, self.urban, self.roads, self.collar_col)
             temp_tracker.preproc()
             print(f"  -> After preproc: {len(temp_tracker.df) if temp_tracker.df is not None else 'None'} rows")
-
             if temp_tracker.df is None or temp_tracker.df.empty:
                 print(f"  -> Skipping {collar}: preproc filtered everything out")
-
             temp_tracker.movement_metrics()
             temp_tracker.behavior_classified()
-
             self.collar_results[collar] = {
                 'process':    temp_tracker.df,
                 'alerts':     temp_tracker.detect_weird(),
@@ -225,7 +216,6 @@ class Coyote_Tracker:
                 'activity':   temp_tracker.activity()
             }
             print(f"  -> Stored results for collar {collar}")
-
         except Exception as e:
             import traceback
             print(f"  -> ERROR processing collar {collar}: {e}")
@@ -516,8 +506,8 @@ class Coyote_Tracker:
         median_dt = self.df['timestamp'].median()
         hour = median_dt.hour
         season = self._get_season(median_dt)
-        time_score = self._time_suitability(hour)
-        season_score = self._season_suitability(season)
+        time_score = self.time_suitability(hour)
+        season_score = self.season_suitability(season)
         prob_grid = density * terrain_score * time_score * season_score
         prob_grid = prob_grid / prob_grid.max()  
         contours = []
