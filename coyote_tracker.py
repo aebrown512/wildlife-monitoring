@@ -281,6 +281,17 @@ class Coyote_Tracker:
                 'Traveling': 'red',
                 'Unknown':   'clear'
             }
+            legend_html = """
+            <div style="position:fixed; bottom:30px; left:30px; z-index:1000;
+                        background:white; padding:10px; border-radius:8px;
+                        border:1px solid clear; font-size:13px;">
+            <b>Behavior</b><br>
+            <span style="color:blue">&#9679;</span> Resting<br>
+            <span style="color:green">&#9679;</span> Foraging<br>
+            <span style="color:red">&#9679;</span> Traveling<br>
+            <span style="color:clear">&#9679;</span> Unknown
+            </div>
+            """
             for _, row in df.iterrows():
                 behavior = row.get('behavior', 'Unknown')
                 speed_val = (
@@ -306,17 +317,6 @@ class Coyote_Tracker:
             ]
             if len(points) > 1:
                 folium.PolyLine(points, color='black', weight=1.5, opacity=0.6).add_to(m)
-            legend_html = """
-            <div style="position:fixed; bottom:30px; left:30px; z-index:1000;
-                        background:white; padding:10px; border-radius:8px;
-                        border:1px solid clear; font-size:13px;">
-            <b>Behavior</b><br>
-            <span style="color:blue">&#9679;</span> Resting<br>
-            <span style="color:green">&#9679;</span> Foraging<br>
-            <span style="color:red">&#9679;</span> Traveling<br>
-            <span style="color:clear">&#9679;</span> Unknown
-            </div>
-            """
             m.get_root().html.add_child(folium.Element(legend_html))
         folium.LayerControl().add_to(m)
         m.save(outputmap)
