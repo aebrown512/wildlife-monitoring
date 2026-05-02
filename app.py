@@ -110,7 +110,7 @@ def upload():
             'processed_csv_url': url_for('get_file', ses_id=ses_id, filename='process.csv'),
             'collective': collective,
             'alerts': alert,
-            'per_collar': result.get('per_collar', {}),   # <-- ADD THIS LINE
+            'per_collar': result.get('per_collar', {}),
             'prediction': predict,
             'stats': {
                 'num_fixes': len(result['process']),
